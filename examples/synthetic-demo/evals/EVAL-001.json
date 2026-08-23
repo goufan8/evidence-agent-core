@@ -1,0 +1,14 @@
+{
+  "eval_id": "EVAL-001",
+  "evidence": "evidence/EV-001.json",
+  "assertions": [
+    {
+      "path": "result.verified",
+      "equals": true
+    },
+    {
+      "path": "result.independent_repetitions",
+      "equals": 3
+    }
+  ]
+}

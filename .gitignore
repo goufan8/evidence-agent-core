@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+build/
+dist/
+.venv/
+venv/
+.DS_Store
+
+# Local demo/runtime data. Synthetic fixtures live under examples/.
+.evidence-agent-core/
+demo-workspace/

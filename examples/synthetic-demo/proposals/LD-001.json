@@ -1,0 +1,15 @@
+{
+  "delta_id": "LD-001",
+  "session_id": "synthetic-session-001",
+  "claim": "The workflow reproduced independently in a clean session.",
+  "rule": "Require a clean-session reproduction before promoting a workflow change.",
+  "scope": "workflow-change",
+  "confidence": "high",
+  "evidence": [
+    "evidence/EV-001.json"
+  ],
+  "evals": [
+    "evals/EVAL-001.json"
+  ],
+  "status": "candidate"
+}
