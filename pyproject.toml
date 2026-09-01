@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "evidence-agent-core"
-version = "0.1.0"
-description = "A local-first change-control layer for durable AI agent learning."
+version = "0.4.0"
+description = "Local-first coordination and change control for durable AI agent work."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Evidence Agent Core contributors" }]
-keywords = ["ai-agents", "memory", "governance", "evaluation", "local-first"]
+keywords = ["ai-agents", "multi-agent", "memory", "governance", "evaluation", "local-first"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "License :: OSI Approved :: MIT License",

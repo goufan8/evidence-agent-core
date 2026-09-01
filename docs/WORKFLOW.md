@@ -1,5 +1,10 @@
 # Workflow
 
+For operational single-agent and multi-agent coordination, first create a
+global `Work` using the flow in [`COORDINATION.md`](COORDINATION.md). The
+workflow below remains the stricter path for deciding whether an observation
+may change durable agent behavior.
+
 ## 1. Initialize
 
 ```bash
@@ -84,3 +89,9 @@ evidence-agent-core --root ./workspace install \
 ```
 
 Only the managed block is updated on later runs.
+
+The generated adapter contains three authored layers: the constitution, the
+durable-learning playbook, and the global coordination protocol. Promoted
+rules are appended after those stable instructions. Runtime adapters should
+still retrieve detailed Work artifacts dynamically rather than compiling all
+operational records into `AGENTS.md`.

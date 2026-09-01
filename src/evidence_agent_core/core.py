@@ -19,7 +19,14 @@ from typing import Any, Iterable
 
 MANAGED_START = "<!-- EVIDENCE_AGENT_CORE:START -->"
 MANAGED_END = "<!-- EVIDENCE_AGENT_CORE:END -->"
-PRIVATE_DIRS = ("sessions", "reviews", "evidence", "proposals", "evals")
+PRIVATE_DIRS = (
+    "sessions",
+    "reviews",
+    "evidence",
+    "proposals",
+    "evals",
+    "coordination",
+)
 
 
 class CoreError(ValueError):
@@ -86,6 +93,10 @@ class AgentCore:
     """Manage one evidence-gated agent workspace inside a repository."""
 
     def __init__(self, root: str | Path = ".") -> None:
+        # Imported lazily so coordination can reuse the storage and validation
+        # primitives in this module without creating an import-time cycle.
+        from .coordination import CoordinationPlane
+
         self.root = Path(root).expanduser().resolve()
         self.store = self.root / ".evidence-agent-core"
         self.config_path = self.store / "config.json"
@@ -100,6 +111,7 @@ class AgentCore:
         self.evals = self.store / "evals"
         self.core_dir = self.store / "core"
         self.generated = self.store / "generated"
+        self.coordination = CoordinationPlane(self.root, self.store)
 
     def _ensure_initialized(self) -> None:
         if not self.config_path.exists():
@@ -141,8 +153,20 @@ class AgentCore:
                     "format_version": 1,
                     "default_adapters": ["AGENTS.md", "CLAUDE.md"],
                     "privacy": "private-by-default",
+                    "coordination": {
+                        "format_version": 1,
+                        "default_mode": "shadow",
+                    },
                 },
             )
+        else:
+            config = read_json(self.config_path)
+            if "coordination" not in config:
+                config["coordination"] = {
+                    "format_version": 1,
+                    "default_mode": "shadow",
+                }
+                write_json(self.config_path, config)
         if not self.state_path.exists():
             write_json(
                 self.state_path,
@@ -190,11 +214,36 @@ class AgentCore:
                 mode=0o644,
             )
 
+        coordination = self.core_dir / "COORDINATION.md"
+        if not coordination.exists():
+            atomic_write(
+                coordination,
+                "# Global Coordination Protocol\n\n"
+                "- Represent every request as one scoped Work before choosing an execution route.\n"
+                "- A single agent is a valid route inside the global protocol, not a legacy bypass.\n"
+                "- Check registered agents, open tasks, and existing artifacts before delegating.\n"
+                "- Use task leases to prevent duplicate work and keep shared mutable writes single-owner.\n"
+                "- Publish immutable artifacts that separate facts, calculations, hypotheses, and decisions.\n"
+                "- Record dependencies and conflicts explicitly; do not turn agreement into evidence.\n"
+                "- Keep operational artifacts separate from durable learning proposals.\n"
+                "- Promote durable rules only through evidence, evaluation, and human approval.\n"
+                "- In shadow mode, observe and compare without changing the effective execution route.\n"
+                "- In rollback mode, preserve the Work record while routing execution through the legacy path.\n",
+                mode=0o644,
+            )
+
+        config = read_json(self.config_path)
+        coordination_config = config.get("coordination", {})
+        coordination_state = self.coordination.init(
+            default_mode=str(coordination_config.get("default_mode", "shadow"))
+        )
+
         generated = self.compile_adapters()
         return {
             "root": str(self.root),
             "store": str(self.store),
             "generated": [str(path) for path in generated],
+            "coordination": coordination_state,
         }
 
     def capture(
@@ -464,11 +513,18 @@ class AgentCore:
         self.generated.mkdir(parents=True, exist_ok=True)
         constitution = (self.core_dir / "CONSTITUTION.md").read_text(encoding="utf-8")
         playbook = (self.core_dir / "PLAYBOOK.md").read_text(encoding="utf-8")
+        coordination_path = self.core_dir / "COORDINATION.md"
+        coordination = (
+            coordination_path.read_text(encoding="utf-8")
+            if coordination_path.exists()
+            else "# Global Coordination Protocol\n\nNo coordination protocol configured.\n"
+        )
         learned = self._rules_markdown()
         payload = (
             "# Evidence Agent Core\n\n"
             "This managed context was compiled from authored core files and human-approved learning.\n\n"
-            f"{constitution.strip()}\n\n{playbook.strip()}\n\n{learned.strip()}\n"
+            f"{constitution.strip()}\n\n{playbook.strip()}\n\n"
+            f"{coordination.strip()}\n\n{learned.strip()}\n"
         )
         outputs = []
         for name in ("AGENTS.md", "CLAUDE.md"):
@@ -518,6 +574,7 @@ class AgentCore:
             ),
             "promoted_rules": len(self._ledger()),
             "last_promoted_delta": read_json(self.state_path).get("last_promoted_delta"),
+            "coordination": self.coordination.status(),
         }
 
     def tracked_private_paths(self, tracked: Iterable[str]) -> list[str]:

@@ -15,6 +15,9 @@ Assume all of the following are sensitive unless deliberately sanitized:
 - evidence, reviews, and decision notes;
 - candidate and promoted rules;
 - generated adapters;
+- coordination Work envelopes, agent metadata, task leases, artifacts,
+  decisions, and the append-only event stream;
+- shadow evaluation reports and declared case labels;
 - personal, customer, employee, financial, health, or credential data.
 
 ## What the tool protects against
@@ -22,10 +25,30 @@ Assume all of the following are sensitive unless deliberately sanitized:
 - accidental promotion without an accepted candidate review;
 - promotion without named evidence and passing evaluations;
 - promotion without a human approver;
+- accidental Git tracking of shadow evaluation reports and declared case
+  labels;
 - transcript replacement under an existing session ID;
 - writes outside the configured workspace;
 - accidental Git tracking of runtime records under the default layout;
 - overwriting non-managed content in runtime instruction files.
+
+All files under `.evidence-agent-core/coordination/` remain denied by default.
+Agent metadata and Work records can still contain sensitive operational names,
+paths, or source references, so the coordination store should not be treated
+as anonymized merely because raw transcripts are absent.
+
+The user-level Codex adapter stores its private workspace under
+`~/.codex/evidence-agent-core/workspace/`. `UserPromptSubmit` persists only the
+prompt SHA-256 digest and character count, not the prompt body. `SubagentStop`
+and `Stop` persist bounded assistant-message excerpts because cross-agent reuse
+requires readable artifacts. Those excerpts can still contain sensitive data;
+the global runtime must therefore remain private and must not be committed or
+synced as a public artifact.
+
+The shadow evaluator rejects a case if either Work metadata or a root/child
+prompt-observation event contains raw-prompt keys or lacks a valid character
+count and SHA-256 digest. Regression tests scan the private fixture workspace
+for both a root secret prompt and a non-empty child secret prompt.
 
 ## What the tool does not protect against
 
