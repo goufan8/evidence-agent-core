@@ -931,6 +931,7 @@ def _live_codex_hooks(
     process: subprocess.Popen[str] | None = None
     response_queue: queue.Queue[str | None] = queue.Queue()
     stderr_lines: list[str] = []
+    stderr_thread: threading.Thread | None = None
     try:
         process = subprocess.Popen(
             [executable, "app-server", "--stdio"],
@@ -957,10 +958,16 @@ def _live_codex_hooks(
                 stderr_lines.append(line)
 
         threading.Thread(target=read_responses, daemon=True).start()
-        threading.Thread(target=read_stderr, daemon=True).start()
-        for message in messages:
-            process.stdin.write(json.dumps(message) + "\n")
-        process.stdin.flush()
+        stderr_thread = threading.Thread(target=read_stderr, daemon=True)
+        stderr_thread.start()
+        try:
+            for message in messages:
+                process.stdin.write(json.dumps(message) + "\n")
+            process.stdin.flush()
+        except BrokenPipeError:
+            # A startup failure may close stdin before the request batch is
+            # written. Continue so the app-server stderr can explain why.
+            pass
 
         initialize_result: dict[str, Any] = {}
         hook_result: dict[str, Any] | None = None
@@ -980,6 +987,10 @@ def _live_codex_hooks(
                 hook_result = response["result"]
                 break
         if hook_result is None:
+            if process.poll() is not None:
+                process.wait()
+                if stderr_thread is not None:
+                    stderr_thread.join(timeout=0.5)
             diagnostic = "".join(stderr_lines).strip()
             message = "Codex app-server did not return hooks/list before timeout"
             if diagnostic:
@@ -1000,7 +1011,10 @@ def _live_codex_hooks(
     finally:
         if process is not None:
             if process.stdin is not None and not process.stdin.closed:
-                process.stdin.close()
+                try:
+                    process.stdin.close()
+                except (BrokenPipeError, OSError):
+                    pass
             if process.poll() is None:
                 process.terminate()
             try:
@@ -1008,6 +1022,8 @@ def _live_codex_hooks(
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+            if stderr_thread is not None:
+                stderr_thread.join(timeout=0.5)
             for stream in (process.stdout, process.stderr):
                 if stream is not None and not stream.closed:
                     stream.close()
