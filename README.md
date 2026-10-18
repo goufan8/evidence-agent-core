@@ -79,7 +79,7 @@ for expected output and [the changelog](CHANGELOG.md) for 0.4.1.
 git clone https://github.com/goufan8/evidence-agent-core.git
 cd evidence-agent-core
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
+.venv/bin/python -m pip install .
 .venv/bin/python examples/synthetic-demo/run.py
 
 # Optional: create a persistent private workspace
@@ -190,7 +190,7 @@ Read [Privacy and threat model](docs/PRIVACY.md).
 ## Development
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python -m compileall -q src tests
 ```
 

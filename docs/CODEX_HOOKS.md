@@ -54,7 +54,7 @@ Run from the repository root with Python 3.11 or newer:
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
+.venv/bin/python -m pip install .
 .venv/bin/evidence-agent-core codex-install --source .
 ```
 
@@ -175,7 +175,8 @@ pretend that previously captured Work never existed.
 
 ## Update an existing installation
 
-From the new checkout, run the same install command after its tests pass.
+From the new checkout, run `.venv/bin/python -m pip install .` to refresh the CLI package, then the same `codex-install` command
+after its tests pass.
 The installer keeps the private workspace, existing coordination mode and
 unrelated hooks, saves a hook-file backup, and selects a new source-fingerprinted
 release. It does not trust the changed definitions or activate enforced mode.

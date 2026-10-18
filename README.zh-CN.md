@@ -57,7 +57,7 @@ Work -> 路由 -> Agents -> 租约任务 -> 不可变成果 -> 决策 -> 现实�
 git clone https://github.com/goufan8/evidence-agent-core.git
 cd evidence-agent-core
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
+.venv/bin/python -m pip install .
 .venv/bin/python examples/synthetic-demo/run.py
 
 # 可选：创建持久的私有工作区
