@@ -53,10 +53,9 @@ open child-turn Works created by a pre-binding runtime.
 Run from the repository root with Python 3.11 or newer:
 
 ```bash
-PYTHONPATH=src /opt/homebrew/bin/python3.11 \
-  -m evidence_agent_core.cli codex-install \
-  --source . \
-  --python /opt/homebrew/bin/python3.11
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/evidence-agent-core codex-install --source .
 ```
 
 The installer:
@@ -173,3 +172,23 @@ for audit or reinstallation.
 
 This rollback changes the Codex entry path only. It does not delete evidence or
 pretend that previously captured Work never existed.
+
+## Update an existing installation
+
+From the new checkout, run the same install command after its tests pass.
+The installer keeps the private workspace, existing coordination mode and
+unrelated hooks, saves a hook-file backup, and selects a new source-fingerprinted
+release. It does not trust the changed definitions or activate enforced mode.
+Keep the selected Python interpreter available; its absolute path is used by
+the installed launchers.
+
+Run `codex-doctor` after installation. `installed_version` and
+`source_fingerprint` identify the selected code. `healthy` only describes the
+installation structure; `activation_ready` also requires live discovery and
+trust. `--no-live` cannot establish readiness. Review the exact changed hooks
+in Codex `/hooks`, then rerun the doctor in a fresh session. Do not copy old
+trust hashes or use a trust bypass to make the readiness check pass.
+
+For a code rollback, run the installer from the previous source checkout and
+review its definitions as required. `codex-uninstall` removes this integration
+while preserving private history; it does not restore an older runtime.

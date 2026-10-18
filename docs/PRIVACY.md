@@ -24,7 +24,7 @@ Assume all of the following are sensitive unless deliberately sanitized:
 
 - accidental promotion without an accepted candidate review;
 - promotion without named evidence and passing evaluations;
-- promotion without a human approver;
+- promotion without a non-empty approver label (not authenticated identity);
 - accidental Git tracking of shadow evaluation reports and declared case
   labels;
 - transcript replacement under an existing session ID;
@@ -70,3 +70,12 @@ for both a root secret prompt and a non-empty child secret prompt.
 If private data entered Git history, deleting the working-tree file is not
 enough. Rewrite the history or replace the repository before publication, then
 rotate any exposed credential.
+
+## Authorization boundary
+
+`approved_by` / `--approved-by` and coordination `changed_by` values are
+caller-supplied audit labels. The package checks presence and workflow evidence;
+it does not authenticate a human, verify a signature, or isolate an agent with
+the same local filesystem and command permissions. Restrict promotion and mode
+changes through the host's approval/permission controls. Do not present a named
+label or passing evaluation as independent proof that a person authorized it.

@@ -13,7 +13,9 @@
 Session -> 捕获 -> 审核 -> 证据 -> 候选学习 -> 评估 -> 人工批准 -> 晋升
 ```
 
-Agent 可以记录和提出候选规则，但不能悄悄批准自己的学习。
+Agent 可以记录和提出候选规则。晋升需要署名批准记录；真正的人工授权
+由外部运行环境的权限与审批机制保证。`--approved-by` 只是审计标签，
+不是身份认证，也不能单独阻止拥有同等本机权限的 Agent 自行调用。
 
 运行中的协作使用另一条独立链路：
 
@@ -47,23 +49,28 @@ Work -> 路由 -> Agents -> 租约任务 -> 不可变成果 -> 决策 -> 现实�
 
 ## 快速开始
 
-需要 Python 3.11 或更高版本。
+需要 Python 3.11 或更高版本。以下命令适用于 macOS/Linux shell。
+演示仅在自动清理的临时目录中使用虚构数据，不安装 Hook、不改变真实规则。
+预期结果见[演示说明](examples/synthetic-demo)，本次变更见[更新记录](CHANGELOG.md)。
 
 ```bash
-python -m pip install -e .
+git clone https://github.com/goufan8/evidence-agent-core.git
+cd evidence-agent-core
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/python examples/synthetic-demo/run.py
+
+# 可选：创建持久的私有工作区
 mkdir demo-workspace
-evidence-agent-core --root demo-workspace init
-evidence-agent-core --root demo-workspace status
+.venv/bin/evidence-agent-core --root demo-workspace init
+.venv/bin/evidence-agent-core --root demo-workspace status
 ```
 
 协调层默认处于 `shadow` 模式，只记录全局工作信封和路由建议，不改变真实
 执行路径：
 
 ```bash
-evidence-agent-core --root demo-workspace coord status
-evidence-agent-core --root demo-workspace coord mode enforced \
-  --changed-by human-owner \
-  --note "开始受控的全局协调试点。"
+.venv/bin/evidence-agent-core --root demo-workspace coord status
 ```
 
 完整操作链见 [`docs/COORDINATION.md`](docs/COORDINATION.md)。
@@ -75,10 +82,7 @@ Codex Hooks 是用户级生命周期入口。安装器会把隔离运行时放�
 `~/.codex/hooks.json`，并以全局 `shadow` 模式启动：
 
 ```bash
-PYTHONPATH=src /opt/homebrew/bin/python3.11 \
-  -m evidence_agent_core.cli codex-install \
-  --source . \
-  --python /opt/homebrew/bin/python3.11
+.venv/bin/evidence-agent-core codex-install --source .
 
 ~/.codex/evidence-agent-core/bin/evidence-agent-core codex-doctor
 ```
@@ -110,7 +114,7 @@ Agent 分配不同的 `turn_id`，适配器也会按 Session 把这些子回合�
 捕获一次 Session：
 
 ```bash
-evidence-agent-core --root demo-workspace capture \
+.venv/bin/evidence-agent-core --root demo-workspace capture \
   --session-id session-001 \
   --transcript ./path/to/session.jsonl \
   --runtime local-agent \
@@ -121,7 +125,7 @@ evidence-agent-core --root demo-workspace capture \
 如果本次没有值得跨 Session 继承的变化：
 
 ```bash
-evidence-agent-core --root demo-workspace review session-001 \
+.venv/bin/evidence-agent-core --root demo-workspace review session-001 \
   --decision no-delta \
   --note "没有经得起审核的长期变化。"
 ```
@@ -140,7 +144,7 @@ evidence-agent-core --root demo-workspace review session-001 \
 
 ## 当前状态
 
-`0.4.0` 是参考实现，接口可能在 `1.0` 前调整。不应把它作为法律、审计或关键业务记录的唯一存档。
+`0.4.1` 是参考实现，接口可能在 `1.0` 前调整。不应把它作为法律、审计或关键业务记录的唯一存档。
 
 ## 许可证
 

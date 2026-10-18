@@ -157,3 +157,33 @@ Neither result changes mode. A human must still run `coord mode enforced` with
 a named actor and note after reviewing the evidence. A passing suite proves
 only its checks; it does not prove arbitrary artifact correctness or
 superlinear emergent capability.
+
+## Evaluate a new observation window (0.4.1)
+
+An optional top-level field scopes the hook-error gate to a fixed, closed time
+interval. Use ISO timestamps with explicit timezones; start must precede end,
+and end must not be in the future. Both endpoints are inclusive:
+
+```json
+"evaluation_window": {
+  "start": "2026-09-01T00:00:00Z",
+  "end": "2026-09-02T00:00:00Z"
+}
+```
+
+Choose the observation interval before selecting cases. Every positive Work
+must open and close within it; historical negative controls may remain outside.
+A window does not scope away stale open Works, readiness, or other global gates.
+Omitting the field retains the existing all-time error gate.
+
+`metrics.hook_errors` counts selected errors. `hook_errors_total` retains the
+all-time count; `hook_errors_unscopable` reports malformed records or timestamps
+with no timezone. Unscopable errors count against every window, so corrupt data
+cannot silently produce a pass. No log is cleared or rewritten. Reports record
+the interval and all three counts, and use a new evaluator identity to avoid
+colliding with older reports. New history can change a report even outside the
+interval because its all-time totals remain part of the evidence.
+
+The window addresses old failures blocking a new trial; it does not prove a
+new release is better. Case source/representativeness still need independent
+review, and passing never changes mode or supplies human authorization.
