@@ -454,6 +454,11 @@ class AgentCore:
         return values
 
     def promote(self, proposal_path: str | Path, approved_by: str) -> dict[str, Any]:
+        """Record an approval label; caller authentication belongs to the host.
+
+        A non-empty approved_by value is not proof of human authorization.
+        The host must restrict this operation to explicitly approved calls.
+        """
         self._ensure_initialized()
         if not approved_by.strip():
             raise CoreError("promotion requires an explicit human approver")

@@ -348,6 +348,9 @@ class CodexHookInstallerTests(unittest.TestCase):
         self.assertIn("WORK-CODEX", output["hookSpecificOutput"]["additionalContext"])
 
         health = codex_doctor(codex_home=self.codex_home, verify_live=False)
+        self.assertEqual(installed["version"], health["installed_version"])
+        self.assertEqual(64, len(health["source_fingerprint"]))
+        self.assertFalse(health["activation_ready"])
         self.assertTrue(health["healthy"], health)
         self.assertEqual("shadow", health["mode"])
         self.assertTrue(health["checks"]["exactly_one_managed_group_per_event"])

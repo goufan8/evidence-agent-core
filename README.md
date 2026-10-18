@@ -15,7 +15,9 @@ that change behind an explicit workflow:
 Session -> Capture -> Review -> Evidence -> Proposal -> Eval -> Human approval -> Promote
 ```
 
-The agent may capture and propose. It cannot silently promote its own learning.
+The agent may capture and propose. Promotion requires a named approval record.
+The host must enforce human authorization: `--approved-by` is an audit label,
+not identity verification or an independent permission barrier.
 
 The coordination plane adds a separate operational loop:
 
@@ -43,7 +45,7 @@ individuals who run agents across many sessions or runtimes. It provides:
   latency, duplication, fragmentation, conflict, and handoff checks;
 - a required review decision: `no-delta` or one candidate proposal;
 - source-backed evidence records and deterministic JSON evaluations;
-- explicit human approval before promotion;
+- a named approval record before promotion, with authorization enforced by the host;
 - an append-only promoted-learning ledger;
 - generated adapters for `AGENTS.md` and `CLAUDE.md`;
 - managed-block installation that preserves existing project instructions;
@@ -68,23 +70,29 @@ still be harmful. Durable learning therefore needs change control:
 
 ## Quick start
 
-Requires Python 3.11 or newer.
+Requires Python 3.11 or newer. These commands target macOS/Linux shells.
+The demo uses fictional data in an automatically removed temporary directory;
+it does not install hooks or change real rules. See [the demo](examples/synthetic-demo)
+for expected output and [the changelog](CHANGELOG.md) for 0.4.1.
 
 ```bash
-python -m pip install -e .
+git clone https://github.com/goufan8/evidence-agent-core.git
+cd evidence-agent-core
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+.venv/bin/python examples/synthetic-demo/run.py
+
+# Optional: create a persistent private workspace
 mkdir demo-workspace
-evidence-agent-core --root demo-workspace init
-evidence-agent-core --root demo-workspace status
+.venv/bin/evidence-agent-core --root demo-workspace init
+.venv/bin/evidence-agent-core --root demo-workspace status
 ```
 
 The coordination plane starts in `shadow` mode. This records global envelopes
 and routing recommendations without changing the effective execution route:
 
 ```bash
-evidence-agent-core --root demo-workspace coord status
-evidence-agent-core --root demo-workspace coord mode enforced \
-  --changed-by human-owner \
-  --note "Begin the controlled coordination pilot."
+.venv/bin/evidence-agent-core --root demo-workspace coord status
 ```
 
 See [Global coordination](docs/COORDINATION.md) for the complete runnable flow.
@@ -96,10 +104,7 @@ isolated runtime under `~/.codex/evidence-agent-core/`, merges six managed
 events into `~/.codex/hooks.json`, and starts in global `shadow` mode:
 
 ```bash
-PYTHONPATH=src /opt/homebrew/bin/python3.11 \
-  -m evidence_agent_core.cli codex-install \
-  --source . \
-  --python /opt/homebrew/bin/python3.11
+.venv/bin/evidence-agent-core codex-install --source .
 
 ~/.codex/evidence-agent-core/bin/evidence-agent-core codex-doctor
 ```
@@ -138,7 +143,7 @@ to remain in shadow mode are recorded in the
 Capture a transcript and create a review packet:
 
 ```bash
-evidence-agent-core --root demo-workspace capture \
+.venv/bin/evidence-agent-core --root demo-workspace capture \
   --session-id session-001 \
   --transcript ./path/to/session.jsonl \
   --runtime local-agent \
@@ -149,7 +154,7 @@ evidence-agent-core --root demo-workspace capture \
 Close a session that produced no reusable learning:
 
 ```bash
-evidence-agent-core --root demo-workspace review session-001 \
+.venv/bin/evidence-agent-core --root demo-workspace review session-001 \
   --decision no-delta \
   --note "No durable change survived review."
 ```
@@ -175,7 +180,7 @@ Read [Privacy and threat model](docs/PRIVACY.md).
 
 ## Design principles
 
-- **Human authority:** only a named human can promote a durable rule.
+- **Human authority:** the host authorizes promotion; the tool records the approver label.
 - **Evidence before inheritance:** a session is not evidence merely because it happened.
 - **Scoped learning:** every rule declares where it applies.
 - **Reversibility:** history is append-only and prior claims remain inspectable.
@@ -185,13 +190,13 @@ Read [Privacy and threat model](docs/PRIVACY.md).
 ## Development
 
 ```bash
-python -m unittest discover -s tests -v
-python -m compileall -q src tests
+PYTHONPATH=src .venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m compileall -q src tests
 ```
 
 ## Status
 
-Version `0.4.0` is an alpha reference implementation. File formats may change
+Version `0.4.1` is an alpha reference implementation. File formats may change
 before `1.0`. Do not use it as the only archive for legally or operationally
 critical records.
 

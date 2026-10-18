@@ -1177,6 +1177,8 @@ def codex_doctor(
             "reason": "live Codex discovery was not requested",
         }
     return {
+        "installed_version": manifest.get("version"),
+        "source_fingerprint": manifest.get("source_fingerprint"),
         "healthy": structural_healthy,
         "structurally_healthy": structural_healthy,
         "activation_ready": structural_healthy and bool(live.get("activation_ready")),

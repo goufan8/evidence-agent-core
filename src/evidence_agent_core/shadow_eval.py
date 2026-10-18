@@ -132,11 +132,57 @@ def _duplicate_summary_pairs(artifacts: list[dict[str, Any]]) -> int:
     return sum(count * (count - 1) // 2 for count in counts.values())
 
 
-def _hook_error_count(core: AgentCore) -> int:
+def _evaluation_window(value: Any) -> tuple[datetime, datetime] | None:
+    if value is None:
+        return None
+    window = _mapping(value, "evaluation_window")
+    if set(window) != {"start", "end"}:
+        raise CoreError("evaluation_window requires exactly start and end")
+    times: list[datetime] = []
+    for field in ("start", "end"):
+        raw = window[field]
+        try:
+            parsed = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except ValueError:
+            parsed = None
+        if parsed is None or parsed.tzinfo is None:
+            raise CoreError(
+                f"evaluation_window {field} requires an ISO timestamp with timezone"
+            )
+        times.append(parsed.astimezone(timezone.utc))
+    start, end = times
+    if start >= end or end > datetime.now(timezone.utc):
+        raise CoreError("evaluation_window must have start < end and cannot end in the future")
+    return start, end
+
+
+def _hook_error_counts(
+    core: AgentCore, window: tuple[datetime, datetime] | None
+) -> dict[str, int]:
+    """Keep history intact; unscopable errors always count against the gate."""
     path = core.coordination.store / "hook-errors.jsonl"
-    if not path.exists():
-        return 0
-    return sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip())
+    total = selected = unscopable = 0
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    for line in lines:
+        if not line.strip():
+            continue
+        total += 1
+        try:
+            record = json.loads(line)
+            raw = record.get("occurred_at") if isinstance(record, dict) else None
+            timestamp = datetime.fromisoformat(raw) if isinstance(raw, str) else None
+        except (ValueError, TypeError):
+            timestamp = None
+        if timestamp is None or timestamp.tzinfo is None:
+            unscopable += 1
+            selected += 1
+        elif window is None or window[0] <= timestamp <= window[1]:
+            selected += 1
+    return {
+        "hook_errors": selected,
+        "hook_errors_total": total,
+        "hook_errors_unscopable": unscopable,
+    }
 
 
 def _prompt_is_digest_only(work: dict[str, Any]) -> bool:
@@ -460,6 +506,11 @@ def evaluate_shadow_suite(
         raise CoreError("shadow case_id values must be unique")
 
     gate = _validated_gate(suite.get("gate", {}))
+    window = _evaluation_window(suite.get("evaluation_window"))
+    window_record = (
+        {"start": window[0].isoformat(), "end": window[1].isoformat()}
+        if window else None
+    )
     all_works = core.coordination.find_works()
     case_results: list[dict[str, Any]] = []
     evidence: list[dict[str, Any]] = []
@@ -502,7 +553,20 @@ def evaluate_shadow_suite(
         and (reference_time - opened).total_seconds() > gate["open_work_grace_seconds"]
         for work in all_works
     )
-    hook_errors = _hook_error_count(core)
+    error_counts = _hook_error_counts(core, window)
+    work_by_id = {work["work_id"]: work for work in all_works}
+    positive_cases_in_window = True
+    if window:
+        for case in positives:
+            work = work_by_id.get(case["work_id"], {})
+            opened = _time(work.get("opened_at"))
+            closed = _time(work.get("closed_at"))
+            if (
+                opened is None
+                or closed is None
+                or not (window[0] <= opened <= closed <= window[1])
+            ):
+                positive_cases_in_window = False
     runtime = runtime_health or {}
     pass_count = sum(case["observed_pass"] for case in positives)
     metrics = {
@@ -532,7 +596,7 @@ def evaluate_shadow_suite(
         ),
         "open_works": open_works,
         "stale_open_works": stale_open_works,
-        "hook_errors": hook_errors,
+        **error_counts,
         "activation_ready": bool(runtime.get("activation_ready")),
         "mode": core.coordination.current_mode(),
     }
@@ -565,12 +629,15 @@ def evaluate_shadow_suite(
         "stale_open_works": metrics["stale_open_works"]
         <= gate["max_stale_open_works"],
         "hook_errors": metrics["hook_errors"] <= gate["max_hook_errors"],
+        "positive_cases_in_window": positive_cases_in_window,
         "activation_ready": not gate["require_activation_ready"]
         or metrics["activation_ready"],
         "shadow_mode": not gate["require_shadow_mode"] or metrics["mode"] == "shadow",
     }
     gate_passed = all(gate_checks.values())
     evidence_payload = {
+        "evaluator_version": 2,
+        "evaluation_window": window_record,
         "spec_sha256": _digest(suite),
         "case_evidence": evidence,
         "runtime_health": runtime,
@@ -578,7 +645,7 @@ def evaluate_shadow_suite(
             "coordination_status": core.coordination.status(),
             "open_works": open_works,
             "stale_open_works": stale_open_works,
-            "hook_errors": hook_errors,
+            **error_counts,
         },
     }
     evidence_sha256 = _digest(evidence_payload)
@@ -587,6 +654,7 @@ def evaluate_shadow_suite(
         "format_version": 1,
         "report_id": report_id,
         "evaluation_id": evaluation_id,
+        "evaluation_window": window_record,
         "evaluated_at": now_iso(),
         "spec_sha256": evidence_payload["spec_sha256"],
         "evidence_sha256": evidence_sha256,

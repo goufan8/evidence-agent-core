@@ -2,6 +2,9 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from datetime import datetime, timedelta, timezone
+
+from evidence_agent_core.core import CoreError
 
 from evidence_agent_core.codex_hooks import CodexHookAdapter
 from evidence_agent_core.shadow_eval import evaluate_shadow_suite
@@ -290,6 +293,90 @@ class ShadowEvaluationTests(unittest.TestCase):
         self.assertFalse(result["checks"]["prompt_digest_only"])
         self.assertFalse(result["observed_pass"])
         self.assertEqual("remain_shadow", report["recommendation"])
+
+    def windowed_suite(self):
+        start = datetime.now(timezone.utc) - timedelta(seconds=1)
+        core, spec = self.suite()
+        end = datetime.now(timezone.utc)
+        spec["evaluation_window"] = {"start": start.isoformat(), "end": end.isoformat()}
+        return core, spec, start, end
+
+    def write_errors(self, core, records):
+        path = core.coordination.store / "hook-errors.jsonl"
+        path.write_text("\n".join(json.dumps(r) for r in records) + "\n")
+        return path
+
+    def test_window_excludes_history_without_erasing_it_and_replays(self):
+        core, spec, start, end = self.windowed_suite()
+        path = self.write_errors(core, [{"occurred_at": (start - timedelta(days=1)).isoformat()}])
+        before = path.read_bytes()
+        report = evaluate_shadow_suite(core, spec, runtime_health={"activation_ready": True})
+        self.assertEqual(0, report["metrics"]["hook_errors"])
+        self.assertEqual(1, report["metrics"]["hook_errors_total"])
+        self.assertTrue(report["gate"]["passed"])
+        again = evaluate_shadow_suite(core, spec, runtime_health={"activation_ready": True})
+        self.assertEqual(report, again)
+        self.assertEqual(before, path.read_bytes())
+        self.assertEqual("shadow", core.coordination.current_mode())
+
+    def test_window_counts_both_boundaries_and_ignores_later_errors(self):
+        core, spec, start, end = self.windowed_suite()
+        self.write_errors(core, [{"occurred_at": t.isoformat()} for t in
+                                (start, end, end + timedelta(seconds=1))])
+        report = evaluate_shadow_suite(core, spec, runtime_health={"activation_ready": True})
+        self.assertEqual(2, report["metrics"]["hook_errors"])
+        self.assertEqual(3, report["metrics"]["hook_errors_total"])
+        self.assertFalse(report["gate"]["checks"]["hook_errors"])
+
+    def test_unscopable_errors_fail_closed(self):
+        core, spec, start, end = self.windowed_suite()
+        path = self.write_errors(core, [{}, {"occurred_at": "bad"},
+                                {"occurred_at": "2020-01-01T00:00:00"}, []])
+        with path.open("a") as handle:
+            handle.write("broken json\n")
+        report = evaluate_shadow_suite(core, spec, runtime_health={"activation_ready": True})
+        self.assertEqual(5, report["metrics"]["hook_errors_unscopable"])
+        self.assertEqual(5, report["metrics"]["hook_errors"])
+        self.assertEqual("remain_shadow", report["recommendation"])
+
+    def test_omitting_window_preserves_all_time_gate(self):
+        core, spec = self.suite()
+        self.write_errors(core, [{"occurred_at": "2000-01-01T00:00:00Z"}])
+        report = evaluate_shadow_suite(core, spec, runtime_health={"activation_ready": True})
+        self.assertIsNone(report["evaluation_window"])
+        self.assertEqual(1, report["metrics"]["hook_errors"])
+        self.assertEqual("remain_shadow", report["recommendation"])
+
+    def test_window_cannot_exclude_positive_work(self):
+        core, spec, start, end = self.windowed_suite()
+        # A clean interval cannot hide errors by excluding positive Work.
+        positive_times = [w["opened_at"] for w in core.coordination.find_works()
+                          if w["work_id"] != spec["cases"][-1]["work_id"]]
+        spec["evaluation_window"]["end"] = min(positive_times)
+        report = evaluate_shadow_suite(core, spec, runtime_health={"activation_ready": True})
+        self.assertFalse(report["gate"]["checks"]["positive_cases_in_window"])
+        self.assertEqual("remain_shadow", report["recommendation"])
+
+    def test_historical_negative_control_remains_valid(self):
+        core, spec, start, end = self.windowed_suite()
+        negative_id = spec["cases"][-1]["work_id"]
+        path = core.coordination.works / f"{negative_id}.json"
+        work = json.loads(path.read_text())
+        work["opened_at"] = (start - timedelta(days=2)).isoformat()
+        work["closed_at"] = (start - timedelta(days=1)).isoformat()
+        path.write_text(json.dumps(work))
+        report = evaluate_shadow_suite(core, spec, runtime_health={"activation_ready": True})
+        self.assertTrue(report["gate"]["checks"]["positive_cases_in_window"])
+        self.assertTrue(report["gate"]["passed"])
+
+    def test_invalid_windows_are_rejected(self):
+        core, spec = self.suite()
+        for window in ({}, {"start": "bad", "end": "bad"},
+                       {"start": "2020-01-01", "end": "2020-01-02"},
+                       {"start": "2020-01-02T00:00:00Z", "end": "2020-01-01T00:00:00Z"},
+                       {"start": "2020-01-01T00:00:00Z", "end": "2999-01-01T00:00:00Z"}):
+            with self.subTest(window=window), self.assertRaises(CoreError):
+                evaluate_shadow_suite(core, {**spec, "evaluation_window": window})
 
 
 if __name__ == "__main__":
